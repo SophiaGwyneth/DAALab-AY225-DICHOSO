@@ -215,7 +215,7 @@ if __name__ == "__main__":
     data = read_dataset(filename)
    
     if data is not None:
-        print(f"Dataset loaded: {len(data)} elements")
+        print(f"Dataset loaded: {len(data)} elemen
        
         while True:
             display_menu()
