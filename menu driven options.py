@@ -101,7 +101,7 @@ def merge_sort_descending(arr):
                 j += 1
        
         result.extend(left[i:])
-        result.extend(right[j:])
+        result.extend(right[j:]) 
        
         return result
    
