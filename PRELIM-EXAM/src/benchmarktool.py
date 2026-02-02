@@ -13,7 +13,7 @@ class SmoothSortingApp:
     def __init__(self, root):
         self.root = root
         self.root.title("AlgoMetric Pro - Performance Suite")
-        self.root.geometry("800x950")
+        self.root.geometry("8000x950")
         self.root.configure(bg="#121212") 
         
         self.file_path = ""
@@ -27,7 +27,6 @@ class SmoothSortingApp:
         style = ttk.Style()
         style.theme_use('clam')
         
-        # Define theme colors
         bg_color = "#121212"
         accent_cyan = "#00FFCC"
         
@@ -57,15 +56,23 @@ class SmoothSortingApp:
         config_frame = tk.LabelFrame(self.root, text=" 2. Parameters ", bg=bg_color, fg=accent_cyan, padx=15, pady=15)
         config_frame.pack(fill="x", padx=40, pady=10)
 
-        ttk.Label(config_frame, text="Rows to Process (N):").grid(row=0, column=0, sticky="w")
+        # Rows Input
+        ttk.Label(config_frame, text="Rows (N):").grid(row=0, column=0, sticky="w")
         self.ent_n = tk.Entry(config_frame, bg="#222", fg=accent_cyan, insertbackground="white", borderwidth=0, font=("Consolas", 11))
-        self.ent_n.insert(0, "10000")
+        self.ent_n.insert(0, "100000")
         self.ent_n.grid(row=0, column=1, sticky="ew", padx=10, pady=5)
 
-        ttk.Label(config_frame, text="Sort Algorithm:").grid(row=1, column=0, sticky="w")
+        # Algorithm Selection
+        ttk.Label(config_frame, text="Algorithm:").grid(row=1, column=0, sticky="w")
         self.var_alg = tk.StringVar(value="Merge Sort")
-        alg_menu = ttk.OptionMenu(config_frame, self.var_alg, "Merge Sort", "Merge Sort", "Bubble Sort", "Insertion Sort")
-        alg_menu.grid(row=1, column=1, sticky="ew", padx=10, pady=5)
+        self.alg_menu = ttk.OptionMenu(config_frame, self.var_alg, "Merge Sort", "Merge Sort", "Bubble Sort", "Insertion Sort")
+        self.alg_menu.grid(row=1, column=1, sticky="ew", padx=10, pady=5)
+
+        # Column Selection (Dynamic)
+        ttk.Label(config_frame, text="Sort By:").grid(row=2, column=0, sticky="w")
+        self.var_col = tk.StringVar(value="Select Column")
+        self.col_dropdown = ttk.OptionMenu(config_frame, self.var_col, "Load CSV first...")
+        self.col_dropdown.grid(row=2, column=1, sticky="ew", padx=10, pady=5)
         
         config_frame.columnconfigure(1, weight=1)
 
@@ -100,25 +107,34 @@ class SmoothSortingApp:
         if path:
             self.file_path = path
             self.lbl_file.config(text=os.path.basename(path), foreground="#00FFCC")
+            
+            with open(path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                headers = next(reader)
+                self.headers = headers
+                
+                # Update Column Dropdown dynamically
+                menu = self.col_dropdown["menu"]
+                menu.delete(0, "end")
+                for col in headers:
+                    menu.add_command(label=col, command=lambda c=col: self.var_col.set(c))
+                self.var_col.set(headers[0])
 
     def stop(self):
         self.is_running = False
-        self.lbl_progress.config(text="ABORTING PROCESS...", fg="#FF3366")
+        self.lbl_progress.config(text="ABORTING...", fg="#FF3366")
 
     def run_benchmark_threaded(self):
-        if not self.file_path:
-            return messagebox.showerror("Error", "No CSV file selected.")
-        
+        if not self.file_path: return messagebox.showerror("Error", "No CSV file selected.")
         try:
             n = int(self.ent_n.get())
-        except ValueError:
-            return messagebox.showerror("Error", "Rows (N) must be a valid number.")
+        except ValueError: return messagebox.showerror("Error", "Rows must be a valid number.")
 
         alg = self.var_alg.get()
+        col = self.var_col.get()
         
-        if n > 15000 and alg in ["Bubble Sort", "Insertion Sort"]:
-            warn_msg = f"WARNING: {alg} is $O(n^2)$. Sorting {n} rows will be very slow.\n\nProceed anyway?"
-            if not messagebox.askyesno("Performance Warning", warn_msg):
+        if n > 25000 and alg in ["Bubble Sort", "Insertion Sort"]:
+            if not messagebox.askyesno("Performance Warning", f"{alg} on {n} rows is $O(n^2)$ and will be slow. Continue?"):
                 return
 
         self.is_running = True
@@ -131,87 +147,81 @@ class SmoothSortingApp:
         threading.Thread(target=self.logic, daemon=True).start()
 
     def get_val(self, row, col):
-        """Helper to safely compare numeric or string values."""
+        """Intelligent comparison: ID as float/int, Names as string."""
         v = row.get(col, "")
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return str(v).lower()
+        if col.lower() == "id":
+            try: return float(v)
+            except: return 0.0
+        return str(v).lower()
 
     def logic(self):
         try:
             n = int(self.ent_n.get())
             alg = self.var_alg.get()
-            col = "ID" # Change this if your CSV uses a different primary key
+            col = self.var_col.get()
 
-            # MEASURE LOAD TIME
             self.update_status("Reading CSV File...")
             t_start_load = time.perf_counter()
             data = []
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
-                self.headers = reader.fieldnames
-                if col not in self.headers:
-                    # Fallback if "ID" column doesn't exist
-                    col = self.headers[0]
-                
                 for i, row in enumerate(reader):
-                    if not self.is_running: break
-                    if i >= n: break
+                    if not self.is_running or i >= n: break
                     data.append(row)
             
-            t_end_load = time.perf_counter()
-            load_time = t_end_load - t_start_load
+            load_time = time.perf_counter() - t_start_load
 
-            if not self.is_running:
-                return
-
-            # MEASURE SORT TIME
-            self.update_status(f"Sorting with {alg}...")
+            self.update_status(f"Sorting by {col}...")
             t_start_sort = time.perf_counter()
             
             if alg == "Merge Sort":
                 sorted_data = self.merge_sort(data, col)
             elif alg == "Bubble Sort":
-                sorted_data = self.bubble_sort(data, col)
+                sorted_data = self.bubble_sort_smooth(data, col)
             else:
-                sorted_data = self.insertion_sort(data, col)
+                sorted_data = self.insertion_sort_smooth(data, col)
             
-            t_end_sort = time.perf_counter()
-            sort_time = t_end_sort - t_start_sort
+            sort_time = time.perf_counter() - t_start_sort
 
             if self.is_running:
                 self.sorted_results = sorted_data
-                self.root.after(0, lambda: self.finalize(load_time, sort_time, alg))
-            else:
-                self.update_status("Benchmark Aborted.")
-
+                self.root.after(0, lambda: self.finalize(load_time, sort_time, alg, col))
         except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("System Error", str(e)))
+            self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
         finally:
             self.root.after(0, self.reset_ui)
 
-    def bubble_sort(self, data, col):
+    def bubble_sort_smooth(self, data, col):
         n = len(data)
+        last_ui_update = time.time()
         for i in range(n):
             if not self.is_running: return []
-            if i % 100 == 0:
-                percent = (i / n) * 100
-                self.root.after(0, lambda p=percent, r=i: self.update_progress(p, f"BUBBLE SORT: {r} / {n} ROWS"))
+            swapped = False
             
+            # Throttle UI updates to once every 200ms
+            if time.time() - last_ui_update > 0.2:
+                percent = (i / n) * 100
+                self.root.after(0, lambda p=percent, r=i: self.update_progress(p, f"BUBBLE PASS: {r}/{n}"))
+                last_ui_update = time.time()
+
             for j in range(0, n - i - 1):
                 if self.get_val(data[j], col) > self.get_val(data[j+1], col):
                     data[j], data[j+1] = data[j+1], data[j]
+                    swapped = True
+            if not swapped: break
         return data
 
-    def insertion_sort(self, data, col):
+    def insertion_sort_smooth(self, data, col):
         n = len(data)
+        last_ui_update = time.time()
         for i in range(1, n):
             if not self.is_running: return []
-            if i % 100 == 0:
-                percent = (i / n) * 100
-                self.root.after(0, lambda p=percent, r=i: self.update_progress(p, f"INSERTION SORT: {r} / {n} ROWS"))
             
+            if time.time() - last_ui_update > 0.2:
+                percent = (i / n) * 100
+                self.root.after(0, lambda p=percent, r=i: self.update_progress(p, f"INSERTION ROW: {r}/{n}"))
+                last_ui_update = time.time()
+
             key = data[i]
             v_key = self.get_val(key, col)
             j = i - 1
@@ -222,21 +232,16 @@ class SmoothSortingApp:
         return data
 
     def merge_sort(self, data, col):
-        if not self.is_running or len(data) <= 1:
-            return data
+        if not self.is_running or len(data) <= 1: return data
         mid = len(data) // 2
-        left = self.merge_sort(data[:mid], col)
-        right = self.merge_sort(data[mid:], col)
-        return self.merge(left, right, col)
+        return self.merge(self.merge_sort(data[:mid], col), self.merge_sort(data[mid:], col), col)
 
     def merge(self, left, right, col):
-        res = []
-        i = j = 0
+        res, i, j = [], 0, 0
         while i < len(left) and j < len(right):
             if self.get_val(left[i], col) <= self.get_val(right[j], col):
                 res.append(left[i]); i += 1
-            else:
-                res.append(right[j]); j += 1
+            else: res.append(right[j]); j += 1
         res.extend(left[i:]); res.extend(right[j:])
         return res
 
@@ -245,29 +250,25 @@ class SmoothSortingApp:
 
     def update_progress(self, val, msg):
         self.progress_var.set(val)
-        self.lbl_progress.config(text=msg.upper(), fg="#00FFCC")
+        self.lbl_progress.config(text=msg.upper())
 
-    def finalize(self, t_load, t_sort, algo_name):
-        self.update_progress(100, "BENCHMARK COMPLETE")
+    def finalize(self, t_load, t_sort, algo_name, col_name):
+        self.update_progress(100, "COMPLETE")
         self.btn_export.config(state="normal")
         
         row_count = len(self.sorted_results)
         throughput = row_count / t_sort if t_sort > 0 else 0
         
-        out = f"--- BENCHMARK RESULTS ({algo_name}) ---\n"
-        out += f"File I/O Time  : {t_load:.4f} seconds\n"
-        out += f"Sorting Time   : {t_sort:.4f} seconds\n"
-        out += f"Total Time     : {t_load + t_sort:.4f} seconds\n"
+        out = f"Sorted By      : {col_name}\n"
+        out += f"File I/O Time  : {t_load:.4f}s\n"
+        out += f"Sorting Time   : {t_sort:.4f}s\n"
         out += f"Throughput     : {throughput:.2f} rows/sec\n"
-        out += f"Dataset Size   : {row_count} rows\n"
-        out += f"{'-'*40}\n"
+        out += f"{'-'*50}\n"
         out += f"PREVIEW (TOP 10 RECORDS):\n"
         
-        # Display first 3 columns for preview
         preview_cols = self.headers[:3]
-        head_str = " | ".join(preview_cols)
-        out += f"{head_str}\n"
-        out += f"{'-'*len(head_str)*2}\n"
+        out += " | ".join(preview_cols) + "\n"
+        out += f"{'-'*50}\n"
         
         for row in self.sorted_results[:10]:
             vals = [str(row.get(h, "")) for h in preview_cols]
@@ -276,17 +277,13 @@ class SmoothSortingApp:
         self.txt_output.insert(tk.END, out)
 
     def export_csv(self):
-        if not self.sorted_results: return
         path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv")])
         if path:
-            try:
-                with open(path, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=self.headers)
-                    writer.writeheader()
-                    writer.writerows(self.sorted_results)
-                messagebox.showinfo("Success", "Data exported successfully.")
-            except Exception as e:
-                messagebox.showerror("Export Error", str(e))
+            with open(path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=self.headers)
+                writer.writeheader()
+                writer.writerows(self.sorted_results)
+            messagebox.showinfo("Success", "Data exported.")
 
     def reset_ui(self):
         self.is_running = False
