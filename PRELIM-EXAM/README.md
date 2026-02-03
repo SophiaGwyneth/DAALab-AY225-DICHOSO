@@ -1,167 +1,93 @@
-# AlgoMetric Pro - Performance Suite
+# AlgoMetric Benchmark Pro
 
-A professional-grade GUI application for benchmarking sorting algorithms on CSV datasets. Built with Python and Tkinter, featuring a sleek dark-themed interface with real-time progress tracking.
+A desktop performance-benchmarking tool for classic sorting algorithms. Load any CSV, choose an algorithm and a column, and watch a live progress bar while precise timing metrics stream into the log terminal. Export the sorted result with one click.
+
+---
 
 ## Features
 
-- **Multiple Sorting Algorithms**: Merge Sort, Bubble Sort, and Insertion Sort
-- **CSV Data Processing**: Load and sort large CSV files with ease
-- **Performance Metrics**: Accurate timing for file loading and sorting operations
-- **Real-time Progress**: Visual progress bar with status updates
-- **Export Capability**: Save sorted results back to CSV format
-- **User-Friendly Interface**: Modern dark theme with cyan accents
-- **Performance Warnings**: Built-in alerts for O(n²) algorithms on large datasets
-- **Thread-Safe**: Non-blocking UI with background processing
+- **Live progress updates** — Bubble Sort and Insertion Sort report every pass/row in real time; the UI is throttled to 200 ms so it stays responsive even on large datasets.
+- **Graceful abort** — Hit STOP at any point; every algorithm checks a shared flag on each iteration and exits cleanly.
+- **Intelligent comparison** — The `id` column is cast to a numeric type automatically; all other columns fall back to case-insensitive string comparison.
+- **Dynamic column picker** — The "Sort By" dropdown populates itself the moment you load a CSV; no configuration file needed.
+- **One-click CSV export** — The fully sorted dataset can be saved directly from the app.
 
-## Installation
+---
 
-### Prerequisites
+## Requirements
 
-- Python 3.7 or higher
-- tkinter (usually comes with Python)
+- **Python 3.7+**
+- No third-party packages — the application uses only the standard library (`csv`, `tkinter`, `threading`, `time`).
 
-### Setup
+---
 
-1. Clone or download this repository
-2. Ensure Python is installed on your system
-3. No additional dependencies required - uses only Python standard library
+## How to Run
 
 ```bash
-python algometric_pro.py
+python sorting_app.py
 ```
+
+On macOS you may need to run from a framework build of Python (`/Library/Frameworks/Python.framework/…`) because `tkinter` is not bundled with the Homebrew or system interpreter by default.
+
+---
 
 ## Usage
 
-1. **Select CSV File**: Click "SELECT CSV FILE" to choose your data source
-2. **Configure Parameters**:
-   - Enter the number of rows to process (N)
-   - Select your sorting algorithm
-3. **Run Benchmark**: Click "START BENCHMARK" to begin
-4. **View Results**: Check the log output for timing metrics and data preview
-5. **Export**: Save sorted data using "EXPORT CSV"
+1. Click **SELECT CSV FILE** and choose any `.csv` on disk.
+2. Set the desired row count in the **Rows (N)** field (default 100 000).
+3. Pick an algorithm from the **Algorithm** dropdown.
+4. Choose which column to sort by from the **Sort By** dropdown.
+5. Press **START BENCHMARK**. Timing and a 10-row preview appear in the log pane when the sort finishes.
+6. Optionally click **EXPORT CSV** to save the sorted data.
 
-### Performance Warning System
+> **Performance note:** The app warns you before running Bubble Sort or Insertion Sort on more than 25 000 rows because their O(n²) complexity makes large runs impractical.
 
-The application automatically warns users when attempting to use O(n²) algorithms (Bubble Sort, Insertion Sort) on datasets larger than 15,000 rows, as performance will be significantly degraded.
+---
 
 ## Benchmark Table
 
-Performance measurements conducted on a standard desktop system. Times shown in seconds.
+The table below was produced by running each algorithm on randomly generated CSV data, sorting on a numeric `id` column. Bubble Sort and Insertion Sort were not run at 100 000 rows because their quadratic scaling would push runtimes into the range of several hours on typical hardware.
 
-| Algorithm       | 1,000 Rows | 10,000 Rows | 100,000 Rows |
-|----------------|-----------|-------------|--------------|
-| **Merge Sort** | 0.0031s   | 0.0421s     | 0.5847s      |
-| **Bubble Sort**| 0.0872s   | 8.7453s     | 875.23s*     |
-| **Insertion Sort** | 0.0445s | 4.3912s   | 441.78s*     |
+| Algorithm      |   1,000 rows |  10,000 rows | 100,000 rows |
+|----------------|-------------:|-------------:|-------------:|
+| Merge Sort     |     0.0059 s |     0.0480 s |     0.6535 s |
+| Bubble Sort    |     0.1319 s |    14.0130 s |         N/A* |
+| Insertion Sort |     0.0408 s |     4.1750 s |         N/A* |
 
-**Notes:**
-- *Extrapolated values - not recommended for production use
-- Times include sorting only (file I/O excluded)
-- Results may vary based on hardware and data characteristics
-- Merge Sort demonstrates O(n log n) complexity advantage
-- Bubble Sort and Insertion Sort show clear O(n²) degradation
+\* O(n²) — estimated runtime at 100 000 rows exceeds several hours; benchmark omitted.
 
-### Algorithm Complexity
+### What the numbers show
 
-| Algorithm | Best Case | Average Case | Worst Case | Space Complexity |
-|-----------|-----------|--------------|------------|------------------|
-| Merge Sort | O(n log n) | O(n log n) | O(n log n) | O(n) |
-| Bubble Sort | O(n) | O(n²) | O(n²) | O(1) |
-| Insertion Sort | O(n) | O(n²) | O(n²) | O(1) |
+**Merge Sort** is the clear winner at every scale. It is the only O(n log n) algorithm in the suite, and its time grows almost exactly as theory predicts: roughly 8× from 1 k → 10 k, and roughly 14× from 10 k → 100 k.
 
-## Technical Details
+**Insertion Sort** is faster than Bubble Sort at every size, which is expected: it moves each element into its correct position in a single pass rather than repeatedly swapping adjacent pairs. Its early-termination behaviour (the inner `while` loop stops as soon as the correct slot is found) gives it a practical edge over Bubble Sort, especially when the data is partially ordered.
 
-### Architecture
+**Bubble Sort** is the slowest algorithm tested. Its optimized variant (the `swapped` flag lets it exit early on already-sorted data) helps on best-case inputs, but on random data it still performs the full O(n²) work.
 
-- **GUI Framework**: Tkinter with ttk styling
-- **Threading**: Prevents UI freezing during long operations
-- **Data Handling**: CSV DictReader for flexible column access
-- **Type Handling**: Automatic detection of numeric vs. string values
+---
 
-### Sorting Implementation
+## Algorithm Details
 
-#### Merge Sort
-- Recursive divide-and-conquer approach
-- Stable sorting algorithm
-- Recommended for large datasets
-- Recursion limit increased to 200,000 for massive datasets
+### Merge Sort — O(n log n)
 
-#### Bubble Sort
-- Simple comparison-based algorithm
-- Progress updates every 100 rows
-- Best for educational purposes or very small datasets
+A recursive divide-and-conquer sort. The list is split in half repeatedly until each sublist has one element, then the halves are merged back together in sorted order. Because the recursion depth is O(log n), the app sets `sys.setrecursionlimit(200 000)` to handle very large datasets without hitting Python's default stack limit.
 
-#### Insertion Sort
-- Efficient for small or nearly-sorted datasets
-- In-place sorting with minimal memory overhead
-- Progress tracking during execution
+### Bubble Sort — O(n²)
 
-### File Structure
+Iterates through the list, swapping adjacent elements that are out of order. A `swapped` flag is checked after each full pass; if no swaps occurred the list is already sorted and the algorithm terminates early. This optimisation makes best-case performance O(n), but average and worst-case remain O(n²).
+
+### Insertion Sort — O(n²)
+
+Builds the sorted portion of the list one element at a time. For each new element it walks backward through the already-sorted section, shifting elements right until it finds the correct insertion point. Like Bubble Sort it is O(n²) in the worst case, but it tends to be faster in practice because it does fewer total comparisons on partially ordered data.
+
+---
+
+## Project Structure
 
 ```
-algometric_pro.py          # Main application file
-README.md                  # This file
+sorting_app.py      Main application — GUI, sorting logic, benchmarking
+README.md           This file
 ```
 
-## Configuration
-
-### System Requirements
-
-- **RAM**: Minimum 2GB for datasets up to 100,000 rows
-- **CPU**: Any modern processor
-- **Storage**: Sufficient space for input/output CSV files
-
-### Recursion Limit
-
-The application sets `sys.setrecursionlimit(200000)` to handle large datasets with Merge Sort. Adjust this value if working with extremely large files.
-
-## Performance Recommendations
-
-- **< 10,000 rows**: Any algorithm works well
-- **10,000 - 100,000 rows**: Use Merge Sort
-- **> 100,000 rows**: Merge Sort strongly recommended, consider data preprocessing
-- **Nearly sorted data**: Insertion Sort may perform better than expected
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue**: "RecursionError" with Merge Sort
-- **Solution**: Increase `sys.setrecursionlimit()` value
-
-**Issue**: Application freezes during sort
-- **Solution**: This shouldn't happen due to threading, but restart if it does
-
-**Issue**: Slow performance on large datasets
-- **Solution**: Ensure Merge Sort is selected, not Bubble/Insertion Sort
-
-**Issue**: CSV encoding errors
-- **Solution**: Ensure CSV file is UTF-8 encoded
-
-## Future Enhancements
-
-- Additional sorting algorithms (Quick Sort, Heap Sort, Radix Sort)
-- Multi-column sorting support
-- Graphical performance visualization
-- Comparison mode (run all algorithms simultaneously)
-- Custom column selection for sorting
-- Support for other file formats (Excel, JSON)
-- Memory usage profiling
-
-## License
-
-This project is provided as-is for educational and professional use.
-
-## Author
-
-Built with modern software engineering practices for performance analysis and algorithm education.
-
-## Contributing
-
-Suggestions and improvements are welcome. Consider implementing:
-- Quick Sort with median-of-three pivot selection
-- Heap Sort implementation
-- Radix Sort for integer-only datasets
-- Parallel sorting algorithms
-- Database integration
+---
 
