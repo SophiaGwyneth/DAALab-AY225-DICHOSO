@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Path Optimizer — Pink Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            /* --- Pink Theme Palette --- */
+            --bg-dark: #fce4ec;         /* Very pale pink background */
+            --bg-panel: #f8bbd0;        /* Soft pink for top bar/headers */
+            --text-main: #4a148c;       /* Dark purple for main text */
+            --text-accent: #c2185b;     /* Vibrant pink for labels */
+            
+            /* Buttons */
+            --pink-btn: #e91e63;
+            --purple-btn: #9c27b0;
+            --grey-btn: #757575;
+
+            /* Left Pane (Notebook) */
+            --paper-yellow: #fffceb;    /* Kept for 'ink' contrast */
+            --ink-blue: #1a237e;
+
+            /* Right Pane (Summary) */
+            --summary-bg: #fdf0f4;      /* Creamy pink bg */
+            --summary-text: #880e4f;    /* Deep magenta text */
+            
+            --border-color: #f48fb1;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-dark);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: var(--text-main);
+            overflow: hidden;
+        }
+
+        /* --- Top Navigation Bar --- */
+        .top-bar {
+            background: var(--bg-panel);
+            padding: 12px 25px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 3px solid var(--border-color);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .controls { display: flex; gap: 18px; align-items: center; }
+
+        .group { display: flex; align-items: center; gap: 8px; color: var(--text-accent); font-weight: bold; font-size: 13px; }
+
+        select {
+            background: #fff;
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 7px;
+            font-family: 'Courier New', monospace;
+            border-radius: 6px;
+            outline: none;
+        }
+        select:focus { border-color: var(--pink-btn); }
+
+        /* Buttons */
+        .btn {
+            border: none;
+            padding: 9px 18px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 20px; /* Rounded buttons */
+            transition: all 0.2s;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn:active { transform: translateY(1px); box-shadow: none; }
+        
+        .btn-pink { background: var(--pink-btn); }
+        .btn-purple { background: var(--purple-btn); }
+        .btn-grey { background: var(--grey-btn); }
+
+        .status { color: var(--text-main); font-family: 'Courier New', monospace; font-size: 12px; font-weight: bold; }
+
+        /* --- Workspace Layout --- */
+        .content {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            flex-grow: 1;
+            overflow: hidden;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .pane {
+            display: flex;
+            flex-direction: column;
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            overflow: hidden;
+            background: #fff;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .pane h3 {
+            margin: 0;
+            padding: 12px;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            background: var(--bg-panel);
+            color: var(--text-accent);
+            border-bottom: 2px solid var(--border-color);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .left-pane pre {
+            background: var(--paper-yellow);
+            color: var(--ink-blue);
+        }
+
+        .right-pane pre {
+            background: var(--summary-bg);
+            color: var(--summary-text);
+        }
+
+        pre {
+            flex-grow: 1;
+            margin: 0;
+            padding: 25px;
+            overflow-y: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        /* Scrollbar Styling (Pink) */
+        pre::-webkit-scrollbar { width: 10px; }
+        pre::-webkit-scrollbar-track { background: rgba(0,0,0,0.03); }
+        pre::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 5px; }
+        pre::-webkit-scrollbar-thumb:hover { background: var(--pink-btn); }
+    </style>
+</head>
+<body>
+
+    <header class="top-bar">
+        <div class="controls">
+            <div class="group">
+                <label>Source:</label>
+                <select id="sourceCombo"><option>None</option></select>
+            </div>
+            <div class="group">
+                <label>Criteria:</label>
+                <select id="criteriaCombo">
+                    <option value="FUEL">FUEL</option>
+                    <option value="DISTANCE">DISTANCE</option>
+                    <option value="TIME">TIME</option>
+                    <option value="ALL">ALL</option>
+                </select>
+            </div>
+            <button id="uploadBtn" class="btn btn-pink">📂 Upload Excel</button>
+            <input type="file" id="xlsxInput" accept=".xlsx, .xls" style="display:none">
+            <button id="analyzeBtn" class="btn btn-purple">⚡ Analyze</button>
+            <button id="clearBtn" class="btn btn-grey">🗑 Clear</button>
+        </div>
+        <div id="statusLabel" class="status">No dataset loaded</div>
+    </header>
+
+    <main class="content">
+        <section class="pane left-pane">
+            <h3>CALCULATION (Handwritten Style)</h3>
+            <pre id="calcArea">Load an Excel file (.xlsx) and click Analyze.</pre>
+        </section>
+        <section class="pane right-pane">
+            <h3>BEST PATH SUMMARY</h3>
+            <pre id="summaryArea">Results will appear here.</pre>
+        </section>
+    </main>
+
+    <script>
+        let edges = [];
+        let nodes = [];
+
+        const sourceCombo = document.getElementById('sourceCombo');
+        const calcArea = document.getElementById('calcArea');
+        const summaryArea = document.getElementById('summaryArea');
+        const xlsxInput = document.getElementById('xlsxInput');
+        const statusLabel = document.getElementById('statusLabel');
+
+        document.getElementById('uploadBtn').onclick = () => xlsxInput.click();
+
+        xlsxInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const data = new Uint8Array(event.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                
+                edges = [];
+                let nodeSet = new Set();
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (!row || row.length < 5) continue;
+                    const edge = {
+                        from: String(row[0]).trim(), to: String(row[1]).trim(),
+                        dist: parseFloat(row[2]), time: parseFloat(row[3]), fuel: parseFloat(row[4])
+                    };
+                    edges.push(edge);
+                    nodeSet.add(edge.from); nodeSet.add(edge.to);
+                }
+                nodes = Array.from(nodeSet).sort((a, b) => isNaN(a) ? a.localeCompare(b) : a - b);
+                sourceCombo.innerHTML = nodes.map(n => `<option value="${n}">${n}</option>`).join('');
+                statusLabel.innerText = `✔ ${edges.length} edges loaded.`;
+                statusLabel.style.color = "#c2185b"; // text-accent
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        function analyze() {
+            if (edges.length === 0) { calcArea.innerText = "Upload a dataset first."; return; }
+            const src = sourceCombo.value;
+            const mode = document.getElementById('criteriaCombo').value;
+            const dests = nodes.filter(n => n !== src);
+            let calcText = ""; let summaryText = "";
+            const modesToDo = mode === "ALL" ? ["FUEL", "DISTANCE", "TIME"] : [mode];
+            modesToDo.forEach(m => {
+                calcText += buildCalcBlock(src, dests, m);
+                summaryText += buildSummaryBlock(src, dests, m);
+            });
+            calcArea.innerText = calcText;
+            summaryArea.innerText = summaryText;
+            calcArea.scrollTop = 0; summaryArea.scrollTop = 0;
+        }
+
+        function buildCalcBlock(src, dests, mode) {
+            const unit = { "FUEL": "L", "DISTANCE": "km", "TIME": "min" }[mode];
+            const bar = (char, n) => "  " + char.repeat(n) + "\n";
+            let sb = bar('═', 70) + `  ${mode} =\n` + bar('─', 70) + "\n";
+            let grandTotal = 0;
+            dests.forEach(dst => {
+                const paths = findAllPaths(src, dst);
+                if (paths.length === 0) { sb += `  ${src} → ${dst} : (unreachable)\n\n`; return; }
+                paths.sort((a, b) => a[mode.toLowerCase()] - b[mode.toLowerCase()]);
+                const minVal = paths[0][mode.toLowerCase()];
+                grandTotal += minVal;
+                sb += `  ${src} → ${dst}\n` + bar('-', 60);
+                paths.forEach(p => {
+                    const val = p[mode.toLowerCase()];
+                    let segParts = []; let runParts = [];
+                    for(let i=0; i < p.path.length - 1; i++) {
+                        const e = edges.find(ed => ed.from === p.path[i] && ed.to === p.path[i+1]);
+                        const ev = e[mode.toLowerCase() === 'distance' ? 'dist' : mode.toLowerCase()];
+                        segParts.push(`${p.path[i]},${p.path[i+1]}=${fmt(ev)}`); runParts.push(fmt(ev));
+                    }
+                    const bestTag = val === minVal ? `  ◄ ${fmt(val)} ${unit}` : "";
+                    if (p.path.length === 2) { sb += `  ${segParts[0]} = ${fmt(val)}${bestTag}\n`; }
+                    else { sb += `  ${segParts.join(" + ")}\n      = ${runParts.join(" + ")} = ${fmt(val)}${bestTag}\n`; }
+                });
+                sb += "\n";
+            });
+            sb += bar('═', 70) + `  TOTAL CHEAPEST ${mode.padEnd(10)} = ${grandTotal.toFixed(2)} ${unit}\n` + bar('═', 70) + "\n";
+            return sb;
+        }
+
+        function buildSummaryBlock(src, dests, mode) {
+            const unit = { "FUEL": "L", "DISTANCE": "km", "TIME": "min" }[mode];
+            const bar = (char, n) => "  " + char.repeat(n) + "\n";
+            let sb = bar('═', 55) + `  ${mode} — BEST PATHS FROM ${src}\n` + bar('═', 55);
+            sb += `  ${'DEST'.padEnd(6)}  ${'BEST PATH'.padEnd(28)}  VALUE\n` + bar('-', 55);
+            let total = 0;
+            dests.forEach(dst => {
+                const paths = findAllPaths(src, dst);
+                if (paths.length === 0) { sb += `  ${dst.padEnd(6)}  ${'(unreachable)'.padEnd(28)}  N/A\n`; return; }
+                paths.sort((a, b) => a[mode.toLowerCase()] - b[mode.toLowerCase()]);
+                const best = paths[0]; total += best[mode.toLowerCase()];
+                sb += `  ${(src+'→'+dst).padEnd(6)}  ${best.path.join("→").padEnd(28)}  ${best[mode.toLowerCase()].toFixed(2)} ${unit}\n`;
+            });
+            sb += bar('-', 55) + `  ${'TOTAL'.padEnd(6)}  ${''.padEnd(28)}  ${total.toFixed(2)} ${unit}\n` + bar('═', 55) + "\n";
+            return sb;
+        }
+
+        function findAllPaths(start, end) {
+            let results = [];
+            let stack = [{ path: [start], visited: new Set([start]) }];
+            while (stack.length > 0) {
+                let { path, visited } = stack.pop();
+                let last = path[path.length - 1];
+                if (last === end) {
+                    let d = 0, t = 0, f = 0;
+                    for (let i = 0; i < path.length - 1; i++) {
+                        const e = edges.find(edge => edge.from === path[i] && edge.to === path[i+1]);
+                        d += e.dist; t += e.time; f += e.fuel;
+                    }
+                    results.push({ path: [...path], distance: d, time: t, fuel: f });
+                    continue;
+                }
+                edges.filter(e => e.from === last).forEach(e => {
+                    if (!visited.has(e.to)) {
+                        let newVisited = new Set(visited); newVisited.add(e.to);
+                        stack.push({ path: [...path, e.to], visited: newVisited });
+                    }
+                });
+            }
+            return results;
+        }
+
+        function fmt(v) { return Number.isInteger(v) ? v.toString() : v.toFixed(1); }
+
+        document.getElementById('analyzeBtn').onclick = analyze;
+        document.getElementById('clearBtn').onclick = () => { calcArea.innerText = ""; summaryArea.innerText = ""; };
+    </script>
+</body>
+</html>
