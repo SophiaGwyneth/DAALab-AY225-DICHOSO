@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PathFinder — Node Network Visualizer</title>
+  <style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap');
+
+:root {
+  --bg: #0a0c10;
+  --surface: #111318;
+  --surface2: #181b22;
+  --border: #22262f;
+  --accent: #00e5ff;
+  --accent2: #ff6b35;
+  --accent3: #a8ff3e;
+  --text: #e8eaf0;
+  --muted: #6b7280;
+  --node-color: #1a1f2e;
+  --node-border: #00e5ff;
+  --edge-color: rgba(0,229,255,0.25);
+  --path-color: #a8ff3e;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Syne', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Background grid */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+}
+
+/* ── HEADER ── */
+header {
+  padding: 20px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  background: rgba(10,12,16,0.8);
+  backdrop-filter: blur(12px);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-icon {
+  width: 36px; height: 36px;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  background: rgba(0,229,255,0.1);
+  animation: pulse-border 3s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,255,0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(0,229,255,0); }
+}
+
+.logo h1 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.logo h1 span { color: var(--accent); }
+
+.header-badge {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+/* ── MAIN LAYOUT ── */
+main {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: calc(100vh - 73px);
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.section {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── UPLOAD AREA ── */
+.upload-area {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--surface2);
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-area:hover,
+.upload-area.drag-over {
+  border-color: var(--accent);
+  background: rgba(0,229,255,0.05);
+}
+
+.upload-area input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-icon { font-size: 28px; margin-bottom: 8px; }
+.upload-text { font-size: 13px; color: var(--muted); }
+.upload-text strong { color: var(--accent); }
+.upload-hint {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* ── CONTROLS ── */
+.control-group { margin-bottom: 14px; }
+
+.control-group label {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+select,
+.btn {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+  cursor: pointer;
+  appearance: none;
+}
+
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+select:focus,
+select:hover { border-color: var(--accent); }
+
+/* ── MODE TOGGLE ── */
+.mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  background: var(--surface2);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.mode-btn {
+  padding: 8px 6px;
+  border-radius: 7px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.mode-btn.active {
+  background: var(--accent);
+  color: #000;
+  font-weight: 700;
+}
+
+.mode-btn:hover:not(.active) { color: var(--text); }
+
+/* ── RUN BUTTON ── */
+.btn-run {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--accent), #0099bb);
+  border: none;
+  border-radius: 8px;
+  color: #000;
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.5px;
+}
+
+.btn-run:hover  { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,229,255,0.3); }
+.btn-run:active { transform: translateY(0); }
+.btn-run:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* ── RESULT CARD ── */
+.result-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 14px;
+  display: none;
+}
+
+.result-card.visible { display: block; animation: slide-in 0.3s ease; }
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.result-path {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--path-color);
+  word-break: break-all;
+  margin-bottom: 12px;
+  line-height: 1.8;
+}
+
+.result-path .arrow {
+  color: var(--muted);
+  margin: 0 4px;
+}
+
+.result-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.stat-value {
+  font-family: 'Space Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.stat-label {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+  font-family: 'Space Mono', monospace;
+  text-transform: uppercase;
+}
+
+.no-path {
+  text-align: center;
+  padding: 12px;
+  color: var(--accent2);
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+}
+
+/* ── EDGE TABLE ── */
+.edge-table {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.edge-table th {
+  color: var(--muted);
+  text-align: left;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.edge-table td {
+  padding: 5px 0;
+  color: var(--text);
+  border-bottom: 1px solid rgba(34,38,47,0.5);
+  font-size: 10px;
+}
+
+.edge-table tr.path-edge td { color: var(--path-color); }
+
+/* ── CANVAS AREA ── */
+.canvas-area {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+#network-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.canvas-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-btn {
+  width: 36px; height: 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.canvas-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.canvas-empty .big-icon { font-size: 64px; opacity: 0.3; }
+.canvas-empty p {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+}
+
+/* ── TOOLTIP ── */
+#tooltip {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 1000;
+  display: none;
+  box-shadow: 0 4px 20px rgba(0,229,255,0.2);
+}
+
+#tooltip strong { color: var(--accent); display: block; margin-bottom: 4px; }
+#tooltip span   { color: var(--muted); }
+
+/* ── LEGEND ── */
+.legend {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: rgba(17,19,24,0.9);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  backdrop-filter: blur(8px);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+.legend-item:last-child { margin-bottom: 0; }
+
+.legend-line {
+  width: 24px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.legend-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--node-border);
+  background: var(--node-color);
+}
+
+.legend-dot.highlighted {
+  background: rgba(0,229,255,0.2);
+  border-color: var(--path-color);
+}
+
+/* ── STATUS BAR ── */
+.status-bar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  background: rgba(17,19,24,0.8);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  backdrop-filter: blur(8px);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.status-dot.active {
+  background: var(--accent3);
+  animation: blink 1.5s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ── SCROLLABLE SECTION ── */
+.scrollable-section {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.scrollable-section::-webkit-scrollbar { width: 3px; }
+.scrollable-section::-webkit-scrollbar-thumb { background: var(--border); }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">&#11041;</div>
+      <h1>Path<span>Finder</span></h1>
+    </div>
+    <div class="header-badge">NODE NETWORK VISUALIZER v1.0</div>
+  </header>
+
+  <main>
+
+    <aside class="sidebar">
+
+      <div class="section">
+        <div class="section-label">Data Source</div>
+        <div class="upload-area" id="upload-area">
+          <input type="file" id="csv-upload" accept=".csv" />
+          <div class="upload-icon">&#128194;</div>
+          <div class="upload-text">Drop <strong>CSV</strong> file here<br>or click to browse</div>
+          <div class="upload-hint">Columns: From Node, To Node, Distance, Time, Fuel</div>
+        </div>
+        <div id="file-status" style="margin-top:10px;font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);text-align:center;"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-label">Path Configuration</div>
+        <div class="control-group">
+          <label for="from-node">From Node</label>
+          <select id="from-node"><option value="">&#8212; Select &#8212;</option></select>
+        </div>
+        <div class="control-group">
+          <label for="to-node">To Node</label>
+          <select id="to-node"><option value="">&#8212; Select &#8212;</option></select>
+        </div>
+        <div class="control-group">
+          <label>Optimize By</label>
+          <div class="mode-toggle">
+            <button class="mode-btn active" data-mode="distance">&#128207; Dist</button>
+            <button class="mode-btn" data-mode="time">&#9201; Time</button>
+            <button class="mode-btn" data-mode="fuel">&#9981; Fuel</button>
+          </div>
+        </div>
+        <button class="btn-run" id="run-btn" disabled>&#9654; Find Shortest Path</button>
+      </div>
+
+      <div class="section">
+        <div class="section-label">Results</div>
+        <div class="result-card" id="result-card">
+          <div class="result-path" id="result-path"></div>
+          <div class="result-stats" id="result-stats"></div>
+        </div>
+        <div class="no-path" id="no-path" style="display:none;"></div>
+      </div>
+
+      <div class="section" id="edge-section" style="display:none;">
+        <div class="section-label">Edge List</div>
+        <div class="scrollable-section">
+          <table class="edge-table">
+            <thead><tr><th>From &#8594; To</th><th>Km</th><th>Min</th><th>L</th></tr></thead>
+            <tbody id="edge-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </aside>
+
+    <div class="canvas-area">
+      <div class="canvas-empty" id="canvas-empty">
+        <div class="big-icon">&#11041;</div>
+        <p>Upload a CSV file to visualize the node network</p>
+      </div>
+      <canvas id="network-canvas"></canvas>
+      <div class="canvas-controls">
+        <button class="canvas-btn" id="zoom-in" title="Zoom In">+</button>
+        <button class="canvas-btn" id="zoom-out" title="Zoom Out">&#8722;</button>
+        <button class="canvas-btn" id="reset-view" title="Reset View">&#8962;</button>
+      </div>
+      <div class="status-bar">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">No data loaded</span>
+      </div>
+      <div class="legend" id="legend" style="display:none;">
+        <div class="legend-item"><div class="legend-dot"></div> Node</div>
+        <div class="legend-item"><div class="legend-dot highlighted"></div> Path Node</div>
+        <div class="legend-item"><div class="legend-line" style="background:rgba(0,229,255,0.4);"></div> Edge</div>
+        <div class="legend-item"><div class="legend-line" style="background:#a8ff3e;"></div> Shortest Path</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div id="tooltip">
+  <strong id="tt-title"></strong>
+  <span id="tt-body"></span>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  GRAPH ENGINE
+// ═══════════════════════════════════════════════
+class Graph {
+  constructor() {
+    this.nodes = new Set();
+    this.edges = [];
+    this.adj   = {};
+  }
+
+  clear() {
+    this.nodes = new Set();
+    this.edges = [];
+    this.adj   = {};
+  }
+
+  addEdge(from, to, dist, time, fuel) {
+    this.nodes.add(from);
+    this.nodes.add(to);
+    this.edges.push({ from, to, distance: dist, time, fuel });
+
+    if (!this.adj[from]) this.adj[from] = [];
+    if (!this.adj[to])   this.adj[to]   = [];
+
+    this.adj[from].push({ node: to,   distance: dist, time, fuel });
+    this.adj[to].push  ({ node: from, distance: dist, time, fuel });
+  }
+
+  dijkstra(start, end, metric) {
+    const dist    = {};
+    const prev    = {};
+    const visited = new Set();
+    const pq      = [];
+
+    for (const n of this.nodes) dist[n] = Infinity;
+    dist[start] = 0;
+    pq.push({ node: start, cost: 0 });
+
+    while (pq.length > 0) {
+      pq.sort((a, b) => a.cost - b.cost);
+      const { node: u } = pq.shift();
+
+      if (visited.has(u)) continue;
+      visited.add(u);
+      if (u === end) break;
+
+      for (const edge of (this.adj[u] || [])) {
+        if (visited.has(edge.node)) continue;
+        const newDist = dist[u] + edge[metric];
+        if (newDist < dist[edge.node]) {
+          dist[edge.node] = newDist;
+          prev[edge.node] = u;
+          pq.push({ node: edge.node, cost: newDist });
+        }
+      }
+    }
+
+    if (dist[end] === Infinity) return null;
+
+    const path = [];
+    let cur = end;
+    while (cur !== undefined) { path.unshift(cur); cur = prev[cur]; }
+
+    let totalDist = 0, totalTime = 0, totalFuel = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i], b = path[i + 1];
+      const edge = this.edges.find(e =>
+        (e.from === a && e.to === b) || (e.from === b && e.to === a)
+      );
+      if (edge) {
+        totalDist += edge.distance;
+        totalTime += edge.time;
+        totalFuel += edge.fuel;
+      }
+    }
+
+    return {
+      path,
+      totalDist: Math.round(totalDist * 10) / 10,
+      totalTime: Math.round(totalTime * 10) / 10,
+      totalFuel: Math.round(totalFuel * 1000) / 1000,
+    };
+  }
+
+  getNodeList() { return [...this.nodes].sort(); }
+}
+
+
+// ═══════════════════════════════════════════════
+//  CSV PARSER — handles comma/semicolon/tab,
+//  quoted fields, Windows CRLF, BOM, spaces
+// ═══════════════════════════════════════════════
+function parseCSV(text) {
+  // Strip BOM, normalise all line endings
+  const normalised = text.replace(/^\uFEFF/, '').replace(/\r/g, '');
+  const lines = normalised.trim().split('\n').map(l => l.trim()).filter(l => l);
+
+  if (lines.length < 2)
+    throw new Error('CSV appears empty or has no data rows.');
+
+  // Auto-detect delimiter
+  const headerLine = lines[0];
+  const delimiter  = headerLine.includes(';') ? ';'
+                   : headerLine.includes('\t') ? '\t'
+                   : ',';
+
+  // Quoted-field aware line splitter
+  function splitLine(line) {
+    const result = [];
+    let current  = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+      } else if (ch === delimiter && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+  const rawHeaders = splitLine(lines[0]);
+  // Normalise headers: lowercase, strip parens/special chars, trim
+  const lcHeaders  = rawHeaders.map(h =>
+    h.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+  );
+
+  // Flexible finder: exact → startsWith → includes
+  function findCol(keys) {
+    for (const k of keys) {
+      let idx = lcHeaders.findIndex(h => h === k);
+      if (idx >= 0) return idx;
+      idx = lcHeaders.findIndex(h => h.startsWith(k));
+      if (idx >= 0) return idx;
+      idx = lcHeaders.findIndex(h => h.includes(k));
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  }
+
+  // Use longer/more-specific keys first to avoid substring collisions
+  const fromIdx = findCol(['from node', 'from']);
+  const toIdx   = findCol(['to node',   'to']);
+  const distIdx = findCol(['distance', 'dist', 'km']);
+  const timeIdx = findCol(['time', 'min']);
+  const fuelIdx = findCol(['fuel', 'liter']);
+
+  if (fromIdx < 0 || toIdx < 0)
+    throw new Error(
+      `Could not find "From" / "To" columns.\n` +
+      `Detected headers: ${rawHeaders.join(' | ')}\n` +
+      `Detected delimiter: "${delimiter === '\t' ? 'TAB' : delimiter}"`
+    );
+
+  if (fromIdx === toIdx)
+    throw new Error(
+      `"From" and "To" resolved to the same column (index ${fromIdx}). Check your headers.`
+    );
+
+  const edges = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitLine(lines[i]);
+    const from = (cols[fromIdx] || '').toUpperCase().trim();
+    const to   = (cols[toIdx]   || '').toUpperCase().trim();
+    if (!from || !to) continue;
+
+    edges.push({
+      from, to,
+      distance: distIdx >= 0 ? (parseFloat(cols[distIdx]) || 0) : 0,
+      time:     timeIdx >= 0 ? (parseFloat(cols[timeIdx]) || 0) : 0,
+      fuel:     fuelIdx >= 0 ? (parseFloat(cols[fuelIdx]) || 0) : 0,
+    });
+  }
+
+  if (edges.length === 0)
+    throw new Error('No valid data rows found. Check that your CSV has rows beneath the header.');
+
+  return edges;
+}
+
+
+// ═══════════════════════════════════════════════
+//  CANVAS RENDERER
+// ═══════════════════════════════════════════════
+class NetworkRenderer {
+  constructor(canvas) {
+    this.canvas      = canvas;
+    this.ctx         = canvas.getContext('2d');
+    this.nodes       = {};
+    this.edges       = [];
+    this.pathEdges   = new Set();
+    this.pathNodes   = new Set();
+    this.scale       = 1;
+    this.offsetX     = 0;
+    this.offsetY     = 0;
+    this.dragging    = false;
+    this.dragStart   = { x: 0, y: 0 };
+    this.hoveredNode = null;
+    this.onHover     = null;
+
+    this._setupEvents();
+    this.resize();
+  }
+
+  resize() {
+    const dpr = devicePixelRatio || 1;
+    this.canvas.width  = this.canvas.offsetWidth  * dpr;
+    this.canvas.height = this.canvas.offsetHeight * dpr;
+    this.ctx.scale(dpr, dpr);
+    this.draw();
+  }
+
+  layoutNodes(nodeNames, edges) {
+    const n  = nodeNames.length;
+    const cx = this.canvas.offsetWidth  / 2;
+    const cy = this.canvas.offsetHeight / 2;
+    const r  = Math.min(cx, cy) * 0.65;
+
+    this.nodes = {};
+    nodeNames.forEach((name, i) => {
+      const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+      this.nodes[name] = {
+        x: cx + r * Math.cos(angle),
+        y: cy + r * Math.sin(angle),
+        label: name,
+      };
+    });
+
+    this.edges     = edges;
+    this.pathEdges = new Set();
+    this.pathNodes = new Set();
+  }
+
+  setPath(pathNodes) {
+    this.pathNodes = new Set(pathNodes);
+    this.pathEdges = new Set();
+    for (let i = 0; i < pathNodes.length - 1; i++) {
+      const key = [pathNodes[i], pathNodes[i + 1]].sort().join('-');
+      this.pathEdges.add(key);
+    }
+    this.draw();
+  }
+
+  toWorld(sx, sy) {
+    return {
+      x: (sx - this.offsetX) / this.scale,
+      y: (sy - this.offsetY) / this.scale,
+    };
+  }
+
+  zoomIn()    { this.scale *= 1.2; this.draw(); }
+  zoomOut()   { this.scale /= 1.2; this.draw(); }
+  resetView() { this.scale = 1; this.offsetX = 0; this.offsetY = 0; this.draw(); }
+
+  _setupEvents() {
+    const c = this.canvas;
+
+    c.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const rect   = c.getBoundingClientRect();
+      const mx     = e.clientX - rect.left;
+      const my     = e.clientY - rect.top;
+      this.offsetX = mx - (mx - this.offsetX) * factor;
+      this.offsetY = my - (my - this.offsetY) * factor;
+      this.scale  *= factor;
+      this.draw();
+    });
+
+    c.addEventListener('mousedown', (e) => {
+      this.dragging  = true;
+      this.dragStart = { x: e.clientX - this.offsetX, y: e.clientY - this.offsetY };
+    });
+
+    c.addEventListener('mousemove', (e) => {
+      if (this.dragging) {
+        this.offsetX = e.clientX - this.dragStart.x;
+        this.offsetY = e.clientY - this.dragStart.y;
+        this.draw();
+        return;
+      }
+      const rect = c.getBoundingClientRect();
+      const mx   = e.clientX - rect.left;
+      const my   = e.clientY - rect.top;
+      const w    = this.toWorld(mx, my);
+
+      let hovered = null;
+      for (const [name, node] of Object.entries(this.nodes)) {
+        const dx = w.x - node.x, dy = w.y - node.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 22 / this.scale) { hovered = name; break; }
+      }
+
+      if (hovered !== this.hoveredNode) { this.hoveredNode = hovered; this.draw(); }
+      if (this.onHover) this.onHover(e.clientX, e.clientY, hovered);
+    });
+
+    c.addEventListener('mouseup',    () => { this.dragging = false; });
+    c.addEventListener('mouseleave', () => {
+      this.dragging = false;
+      if (this.hoveredNode) { this.hoveredNode = null; this.draw(); }
+    });
+  }
+
+  draw() {
+    const { ctx, canvas } = this;
+    const W = canvas.offsetWidth, H = canvas.offsetHeight;
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(this.offsetX, this.offsetY);
+    ctx.scale(this.scale, this.scale);
+
+    for (const edge of this.edges) {
+      const a = this.nodes[edge.from], b = this.nodes[edge.to];
+      if (!a || !b) continue;
+
+      const key    = [edge.from, edge.to].sort().join('-');
+      const isPath = this.pathEdges.has(key);
+
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+
+      if (isPath) {
+        ctx.strokeStyle = '#a8ff3e';
+        ctx.lineWidth   = 3;
+        ctx.setLineDash([]);
+        ctx.shadowColor = '#a8ff3e';
+        ctx.shadowBlur  = 12;
+      } else {
+        ctx.strokeStyle = 'rgba(0,229,255,0.18)';
+        ctx.lineWidth   = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.shadowBlur  = 0;
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+
+      if (!isPath) {
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        const fs = Math.min(12, 9 / this.scale);
+        ctx.fillStyle = 'rgba(107,114,128,0.7)';
+        ctx.font      = `${fs}px Space Mono`;
+        ctx.textAlign = 'center';
+        ctx.fillText(`${edge.distance}km`, mx, my - 5);
+      }
+    }
+
+    for (const [name, node] of Object.entries(this.nodes)) {
+      const isPath  = this.pathNodes.has(name);
+      const isHover = this.hoveredNode === name;
+      const pathArr = [...this.pathNodes];
+      const isStart = this.pathNodes.size > 0 && pathArr[0] === name;
+      const isEnd   = this.pathNodes.size > 0 && pathArr[pathArr.length - 1] === name;
+      const R       = 22;
+
+      if (isPath || isHover) {
+        ctx.shadowColor = isPath ? '#a8ff3e' : '#00e5ff';
+        ctx.shadowBlur  = 20;
+      }
+
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, R, 0, Math.PI * 2);
+      ctx.fillStyle = isStart ? 'rgba(168,255,62,0.2)'
+                    : isEnd   ? 'rgba(255,107,53,0.2)'
+                    : isPath  ? 'rgba(168,255,62,0.1)'
+                    : isHover ? 'rgba(0,229,255,0.15)'
+                    :           '#1a1f2e';
+      ctx.fill();
+
+      ctx.strokeStyle = isStart ? '#a8ff3e'
+                      : isEnd   ? '#ff6b35'
+                      : isPath  ? '#a8ff3e'
+                      : isHover ? '#00e5ff'
+                      :           'rgba(0,229,255,0.4)';
+      ctx.lineWidth = (isPath || isHover) ? 2.5 : 1.5;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      const fs = Math.min(11, 10 / this.scale);
+      ctx.fillStyle    = isPath ? '#a8ff3e' : isHover ? '#00e5ff' : '#e8eaf0';
+      ctx.font         = `bold ${fs}px Syne, sans-serif`;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(name.length > 7 ? name.slice(0, 7) : name, node.x, node.y);
+
+      if (isStart || isEnd) {
+        ctx.font      = `bold 8px Space Mono`;
+        ctx.fillStyle = isStart ? '#a8ff3e' : '#ff6b35';
+        ctx.fillText(isStart ? 'START' : 'END', node.x, node.y + R + 10);
+      }
+    }
+
+    ctx.restore();
+  }
+}
+
+
+// ═══════════════════════════════════════════════
+//  APP STATE & DOM REFS
+// ═══════════════════════════════════════════════
+const graph = new Graph();
+let renderer      = null;
+let currentMetric = 'distance';
+let currentResult = null;
+
+const csvUpload   = document.getElementById('csv-upload');
+const uploadArea  = document.getElementById('upload-area');
+const fileStatus  = document.getElementById('file-status');
+const fromNode    = document.getElementById('from-node');
+const toNode      = document.getElementById('to-node');
+const runBtn      = document.getElementById('run-btn');
+const resultCard  = document.getElementById('result-card');
+const resultPath  = document.getElementById('result-path');
+const resultStats = document.getElementById('result-stats');
+const noPath      = document.getElementById('no-path');
+const edgeSection = document.getElementById('edge-section');
+const edgeTbody   = document.getElementById('edge-tbody');
+const canvasEmpty = document.getElementById('canvas-empty');
+const canvas      = document.getElementById('network-canvas');
+const statusDot   = document.getElementById('status-dot');
+const statusText  = document.getElementById('status-text');
+const legend      = document.getElementById('legend');
+const tooltip     = document.getElementById('tooltip');
+const ttTitle     = document.getElementById('tt-title');
+const ttBody      = document.getElementById('tt-body');
+
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+renderer = new NetworkRenderer(canvas);
+
+renderer.onHover = (mx, my, nodeName) => {
+  if (nodeName) {
+    const count = graph.edges.filter(e => e.from === nodeName || e.to === nodeName).length;
+    tooltip.style.display = 'block';
+    tooltip.style.left    = (mx + 14) + 'px';
+    tooltip.style.top     = (my - 10) + 'px';
+    ttTitle.textContent   = nodeName;
+    ttBody.innerHTML      = `Connections: ${count}`;
+  } else {
+    tooltip.style.display = 'none';
+  }
+};
+
+window.addEventListener('resize', () => renderer.resize());
+
+
+// ═══════════════════════════════════════════════
+//  DRAG & DROP
+// ═══════════════════════════════════════════════
+uploadArea.addEventListener('dragover',  (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+uploadArea.addEventListener('dragleave', ()  => { uploadArea.classList.remove('drag-over'); });
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadArea.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+
+csvUpload.addEventListener('click',  () => { csvUpload.value = ''; });
+csvUpload.addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+
+// ═══════════════════════════════════════════════
+//  LOAD FILE
+// ═══════════════════════════════════════════════
+function loadFile(file) {
+  fileStatus.style.color = 'var(--muted)';
+  fileStatus.textContent = '⏳ Loading…';
+
+  const reader = new FileReader();
+
+  reader.onload = (e) => {
+    try {
+      const edges = parseCSV(e.target.result);
+      buildGraph(edges, file.name);
+    } catch (err) {
+      fileStatus.style.color = 'var(--accent2)';
+      fileStatus.textContent = '✗ ' + err.message;
+      console.error('CSV parse error:', err);
+    }
+  };
+
+  reader.onerror = () => {
+    fileStatus.style.color = 'var(--accent2)';
+    fileStatus.textContent = '✗ Failed to read file.';
+  };
+
+  reader.readAsText(file);
+}
+
+function buildGraph(edges, filename) {
+  graph.clear();
+  edges.forEach(e => graph.addEdge(e.from, e.to, e.distance, e.time, e.fuel));
+
+  const nodes = graph.getNodeList();
+
+  [fromNode, toNode].forEach(sel => {
+    sel.innerHTML = '<option value="">— Select —</option>';
+    nodes.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      sel.appendChild(opt);
+    });
+  });
+
+  edgeTbody.innerHTML = '';
+  graph.edges.forEach(e => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${e.from} → ${e.to}</td><td>${e.distance}</td><td>${e.time}</td><td>${e.fuel}</td>`;
+    edgeTbody.appendChild(tr);
+  });
+  edgeSection.style.display = 'block';
+
+  canvasEmpty.style.display = 'none';
+  legend.style.display      = 'block';
+  renderer.layoutNodes(nodes, graph.edges);
+  renderer.draw();
+
+  statusDot.classList.add('active');
+  statusText.textContent = `${nodes.length} nodes · ${graph.edges.length} edges`;
+
+  fileStatus.style.color = 'var(--accent3)';
+  fileStatus.textContent = `✓ ${filename}  (${nodes.length} nodes, ${edges.length} edges)`;
+
+  runBtn.disabled = false;
+  resultCard.classList.remove('visible');
+  noPath.style.display = 'none';
+}
+
+
+// ═══════════════════════════════════════════════
+//  METRIC TOGGLE
+// ═══════════════════════════════════════════════
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMetric = btn.dataset.mode;
+  });
+});
+
+
+// ═══════════════════════════════════════════════
+//  RUN DIJKSTRA
+// ═══════════════════════════════════════════════
+runBtn.addEventListener('click', () => {
+  const from = fromNode.value;
+  const to   = toNode.value;
+  if (!from || !to) return;
+
+  if (from === to) {
+    resultCard.classList.remove('visible');
+    noPath.style.display = 'block';
+    noPath.textContent   = 'Start and end nodes must be different.';
+    return;
+  }
+
+  const result = graph.dijkstra(from, to, currentMetric);
+
+  if (!result) {
+    resultCard.classList.remove('visible');
+    noPath.style.display = 'block';
+    noPath.textContent   = `No path found from ${from} to ${to}.`;
+    renderer.setPath([]);
+    updateEdgeTable([]);
+    return;
+  }
+
+  noPath.style.display = 'none';
+  currentResult = result;
+
+  resultPath.innerHTML = result.path.map((n, i) =>
+    i < result.path.length - 1
+      ? `<span style="color:var(--path-color)">${n}</span><span class="arrow">→</span>`
+      : `<span style="color:var(--accent2)">${n}</span>`
+  ).join('');
+
+  resultStats.innerHTML = `
+    <div class="stat">
+      <div class="stat-value">${result.totalDist.toFixed(1)}</div>
+      <div class="stat-label">km</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">${result.totalTime.toFixed(0)}</div>
+      <div class="stat-label">mins</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">${result.totalFuel.toFixed(2)}</div>
+      <div class="stat-label">liters</div>
+    </div>
+  `;
+
+  resultCard.classList.add('visible');
+  renderer.setPath(result.path);
+  updateEdgeTable(result.path);
+});
+
+
+// ═══════════════════════════════════════════════
+//  EDGE TABLE HIGHLIGHT
+// ═══════════════════════════════════════════════
+function updateEdgeTable(path) {
+  const pathSet = new Set();
+  for (let i = 0; i < path.length - 1; i++)
+    pathSet.add([path[i], path[i + 1]].sort().join('-'));
+
+  edgeTbody.querySelectorAll('tr').forEach((tr, i) => {
+    const e = graph.edges[i];
+    if (!e) return;
+    tr.classList.toggle('path-edge', pathSet.has([e.from, e.to].sort().join('-')));
+  });
+}
+
+
+// ═══════════════════════════════════════════════
+//  ZOOM / RESET
+// ═══════════════════════════════════════════════
+document.getElementById('zoom-in').addEventListener('click',    () => renderer.zoomIn());
+document.getElementById('zoom-out').addEventListener('click',   () => renderer.zoomOut());
+document.getElementById('reset-view').addEventListener('click', () => renderer.resetView());
+</script>
+</body>
+</html>
