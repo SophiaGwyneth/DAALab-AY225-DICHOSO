@@ -152,3 +152,6 @@ This project was designed to be self-contained and dependency-free:
 - The **Python version** uses only the standard library (`csv`, `heapq`, `argparse`, `collections`)
 
 This makes deployment trivial — share the HTML file or the Python script and it works out of the box.
+
+The Issue: (Brief Explanation)
+I was challenged when the CSV file is not uploading. The upload button did nothing when a CSV was selected, also the browser are blocking the external files like HTML, CSS, and JS. Separated files are breaking the website so I put them inline with HTML to prevent it from doing so. 
