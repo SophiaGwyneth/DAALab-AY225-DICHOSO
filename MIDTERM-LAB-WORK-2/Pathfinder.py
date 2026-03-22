@@ -18,20 +18,25 @@ from collections import defaultdict
 # ──────────────────────────────────────────────
 class Graph:
     def __init__(self):
+        # Node set: unique node IDs
         self.nodes: set = set()
+        # Edge list: preserve all edges for display and summary
         self.edges: list = []
+        # Adjacency list for graph traversal (Dijkstra)
         self.adj: dict = defaultdict(list)
 
     def add_edge(self, from_node: str, to_node: str,
                  distance: float, time: float, fuel: float):
         """Add a bidirectional weighted edge."""
+        # Normalize or validate values upstream if needed.
         self.nodes.add(from_node)
         self.nodes.add(to_node)
         self.edges.append({
             "from": from_node, "to": to_node,
             "distance": distance, "time": time, "fuel": fuel
         })
-        # Undirected — add both directions
+
+        # Undirected graph: add both directions for traversal.
         self.adj[from_node].append({"node": to_node, "distance": distance,
                                     "time": time, "fuel": fuel})
         self.adj[to_node].append({"node": from_node, "distance": distance,
@@ -50,6 +55,7 @@ class Graph:
         dist[start] = 0
 
         # Priority queue: (cost, node)
+        # We use heapq for efficiency, not a naive sorted list.
         pq = [(0, start)]
 
         while pq:
@@ -68,9 +74,10 @@ class Graph:
                     heapq.heappush(pq, (new_cost, v))
 
         if dist[end] == INF:
+            # No path found between start and end in current graph
             return None
 
-        # Reconstruct path
+        # Reconstruct path from end back to start using prev[] map.
         path = []
         cur = end
         while cur is not None:
@@ -112,6 +119,7 @@ def load_csv(filepath: str) -> Graph:
         reader = csv.DictReader(f)
         headers = [h.strip().lower() for h in reader.fieldnames or []]
 
+        # Find the first header matching any of the label variants.
         def find_col(keys):
             for h in reader.fieldnames or []:
                 if any(k in h.lower() for k in keys):
@@ -242,7 +250,7 @@ Examples:
         parser.print_help()
         sys.exit(1)
 
-    # Load graph
+    # Load graph file and handle errors cleanly.
     try:
         g = load_csv(args.file)
     except FileNotFoundError:
