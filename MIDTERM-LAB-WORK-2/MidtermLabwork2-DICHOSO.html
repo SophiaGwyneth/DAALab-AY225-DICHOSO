@@ -634,34 +634,45 @@ select:hover { border-color: var(--accent); }
 // ═══════════════════════════════════════════════
 class Graph {
   constructor() {
+    // Store unique node names in a set so we can list nodes easily.
     this.nodes = new Set();
+    // Keep a full edge listing for display and path cost aggregation.
     this.edges = [];
+    // Adjacency map for graph traversal: node -> [neighbor edges].
     this.adj   = {};
   }
 
   clear() {
+    // Reset graph state when loading a new CSV.
     this.nodes = new Set();
     this.edges = [];
     this.adj   = {};
   }
 
   addEdge(from, to, dist, time, fuel) {
+    // Add nodes to the set (duplicates are ignored automatically).
     this.nodes.add(from);
     this.nodes.add(to);
+
+    // Store edge metadata.
     this.edges.push({ from, to, distance: dist, time, fuel });
 
+    // Create adjacency entries if they are missing.
     if (!this.adj[from]) this.adj[from] = [];
     if (!this.adj[to])   this.adj[to]   = [];
 
+    // Add bidirectional neighbor entries.
     this.adj[from].push({ node: to,   distance: dist, time, fuel });
     this.adj[to].push  ({ node: from, distance: dist, time, fuel });
   }
 
   dijkstra(start, end, metric) {
-    const dist    = {};
-    const prev    = {};
+    // Dijkstra's algorithm for shortest path by chosen metric.
+    // metric: 'distance' | 'time' | 'fuel'
+    const dist    = {};  // best known distance from start
+    const prev    = {};  // previous node for path reconstruction
     const visited = new Set();
-    const pq      = [];
+    const pq      = [];  // simple priority queue (array + sort)
 
     for (const n of this.nodes) dist[n] = Infinity;
     dist[start] = 0;
@@ -671,14 +682,16 @@ class Graph {
       pq.sort((a, b) => a.cost - b.cost);
       const { node: u } = pq.shift();
 
-      if (visited.has(u)) continue;
+      if (visited.has(u)) continue;  // skip duplicates in queue
       visited.add(u);
-      if (u === end) break;
+      if (u === end) break;         // early exit when destination reached
 
       for (const edge of (this.adj[u] || [])) {
         if (visited.has(edge.node)) continue;
+
         const newDist = dist[u] + edge[metric];
         if (newDist < dist[edge.node]) {
+          // Found a better path to edge.node.
           dist[edge.node] = newDist;
           prev[edge.node] = u;
           pq.push({ node: edge.node, cost: newDist });
@@ -686,12 +699,14 @@ class Graph {
       }
     }
 
-    if (dist[end] === Infinity) return null;
+    if (dist[end] === Infinity) return null; // disconnected graph
 
+    // Reconstruct shortest path back from end to start.
     const path = [];
     let cur = end;
     while (cur !== undefined) { path.unshift(cur); cur = prev[cur]; }
 
+    // Sum all metrics along the found path.
     let totalDist = 0, totalTime = 0, totalFuel = 0;
     for (let i = 0; i < path.length - 1; i++) {
       const a = path[i], b = path[i + 1];
@@ -713,6 +728,7 @@ class Graph {
     };
   }
 
+  // Return a sorted list of nodes for select controls.
   getNodeList() { return [...this.nodes].sort(); }
 }
 
@@ -722,28 +738,30 @@ class Graph {
 //  quoted fields, Windows CRLF, BOM, spaces
 // ═══════════════════════════════════════════════
 function parseCSV(text) {
-  // Strip BOM, normalise all line endings
+  // Remove BOM (Byte Order Mark) and normalize CRLF to LF.
   const normalised = text.replace(/^\uFEFF/, '').replace(/\r/g, '');
+  // Split into non-empty trimmed lines.
   const lines = normalised.trim().split('\n').map(l => l.trim()).filter(l => l);
 
   if (lines.length < 2)
     throw new Error('CSV appears empty or has no data rows.');
 
-  // Auto-detect delimiter
+  // Auto-detect delimiter from header line.
   const headerLine = lines[0];
   const delimiter  = headerLine.includes(';') ? ';'
                    : headerLine.includes('\t') ? '\t'
                    : ',';
 
-  // Quoted-field aware line splitter
+  // Helper parser that respects quoted fields.
   function splitLine(line) {
     const result = [];
     let current  = '';
     let inQuotes = false;
+
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
       if (ch === '"') {
-        inQuotes = !inQuotes;
+        inQuotes = !inQuotes; // toggle quote mode
       } else if (ch === delimiter && !inQuotes) {
         result.push(current.trim());
         current = '';
@@ -756,12 +774,12 @@ function parseCSV(text) {
   }
 
   const rawHeaders = splitLine(lines[0]);
-  // Normalise headers: lowercase, strip parens/special chars, trim
+  // Normalize header names for robust matching.
   const lcHeaders  = rawHeaders.map(h =>
     h.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
   );
 
-  // Flexible finder: exact → startsWith → includes
+  // Column lookup tries exact, then startsWith, then contains.
   function findCol(keys) {
     for (const k of keys) {
       let idx = lcHeaders.findIndex(h => h === k);
@@ -774,7 +792,7 @@ function parseCSV(text) {
     return -1;
   }
 
-  // Use longer/more-specific keys first to avoid substring collisions
+  // Find required columns if they exist.
   const fromIdx = findCol(['from node', 'from']);
   const toIdx   = findCol(['to node',   'to']);
   const distIdx = findCol(['distance', 'dist', 'km']);
@@ -793,12 +811,14 @@ function parseCSV(text) {
       `"From" and "To" resolved to the same column (index ${fromIdx}). Check your headers.`
     );
 
+  // Parse each row and convert metrics to numbers.
   const edges = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = splitLine(lines[i]);
     const from = (cols[fromIdx] || '').toUpperCase().trim();
     const to   = (cols[toIdx]   || '').toUpperCase().trim();
-    if (!from || !to) continue;
+
+    if (!from || !to) continue; // ignore incomplete lines.
 
     edges.push({
       from, to,
@@ -820,24 +840,34 @@ function parseCSV(text) {
 // ═══════════════════════════════════════════════
 class NetworkRenderer {
   constructor(canvas) {
+    // Core canvas and drawing context
     this.canvas      = canvas;
     this.ctx         = canvas.getContext('2d');
-    this.nodes       = {};
-    this.edges       = [];
-    this.pathEdges   = new Set();
-    this.pathNodes   = new Set();
+
+    // Runtime state
+    this.nodes       = {};         // positions by node name
+    this.edges       = [];         // edge list for graph drawing
+    this.pathEdges   = new Set();  // edges in current shortest path
+    this.pathNodes   = new Set();  // nodes in current shortest path
+
+    // Transform state: zoom + pan
     this.scale       = 1;
     this.offsetX     = 0;
     this.offsetY     = 0;
+
+    // Drag state
     this.dragging    = false;
     this.dragStart   = { x: 0, y: 0 };
+
+    // Hover state
     this.hoveredNode = null;
-    this.onHover     = null;
+    this.onHover     = null; // callback to show tooltip
 
     this._setupEvents();
     this.resize();
   }
 
+  // Resize canvas to current displayed size for high-DPI screens.
   resize() {
     const dpr = devicePixelRatio || 1;
     this.canvas.width  = this.canvas.offsetWidth  * dpr;
@@ -846,6 +876,7 @@ class NetworkRenderer {
     this.draw();
   }
 
+  // Create circular node layout around canvas center.
   layoutNodes(nodeNames, edges) {
     const n  = nodeNames.length;
     const cx = this.canvas.offsetWidth  / 2;
@@ -867,6 +898,7 @@ class NetworkRenderer {
     this.pathNodes = new Set();
   }
 
+  // Mark path nodes/edges for highlighted rendering.
   setPath(pathNodes) {
     this.pathNodes = new Set(pathNodes);
     this.pathEdges = new Set();
@@ -877,6 +909,7 @@ class NetworkRenderer {
     this.draw();
   }
 
+  // Convert screen coords to world coords accounting for zoom/pan.
   toWorld(sx, sy) {
     return {
       x: (sx - this.offsetX) / this.scale,
@@ -891,6 +924,7 @@ class NetworkRenderer {
   _setupEvents() {
     const c = this.canvas;
 
+    // Zoom with mouse wheel, centered on mouse position.
     c.addEventListener('wheel', (e) => {
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 0.9;
@@ -903,11 +937,13 @@ class NetworkRenderer {
       this.draw();
     });
 
+    // Start dragging for panning.
     c.addEventListener('mousedown', (e) => {
       this.dragging  = true;
       this.dragStart = { x: e.clientX - this.offsetX, y: e.clientY - this.offsetY };
     });
 
+    // Handle pointer move for drag-pan or hover highlight.
     c.addEventListener('mousemove', (e) => {
       if (this.dragging) {
         this.offsetX = e.clientX - this.dragStart.x;
@@ -915,18 +951,27 @@ class NetworkRenderer {
         this.draw();
         return;
       }
+
       const rect = c.getBoundingClientRect();
       const mx   = e.clientX - rect.left;
       const my   = e.clientY - rect.top;
       const w    = this.toWorld(mx, my);
 
+      // Find hovered node by distance from world coords.
       let hovered = null;
       for (const [name, node] of Object.entries(this.nodes)) {
         const dx = w.x - node.x, dy = w.y - node.y;
-        if (Math.sqrt(dx * dx + dy * dy) < 22 / this.scale) { hovered = name; break; }
+        if (Math.sqrt(dx * dx + dy * dy) < 22 / this.scale) {
+          hovered = name;
+          break;
+        }
       }
 
-      if (hovered !== this.hoveredNode) { this.hoveredNode = hovered; this.draw(); }
+      if (hovered !== this.hoveredNode) {
+        this.hoveredNode = hovered;
+        this.draw(); // re-render highlight state
+      }
+
       if (this.onHover) this.onHover(e.clientX, e.clientY, hovered);
     });
 
@@ -946,6 +991,7 @@ class NetworkRenderer {
     ctx.translate(this.offsetX, this.offsetY);
     ctx.scale(this.scale, this.scale);
 
+    // Draw edges first (behind nodes).
     for (const edge of this.edges) {
       const a = this.nodes[edge.from], b = this.nodes[edge.to];
       if (!a || !b) continue;
@@ -958,12 +1004,14 @@ class NetworkRenderer {
       ctx.lineTo(b.x, b.y);
 
       if (isPath) {
+        // Highlighted path edge style.
         ctx.strokeStyle = '#a8ff3e';
         ctx.lineWidth   = 3;
         ctx.setLineDash([]);
         ctx.shadowColor = '#a8ff3e';
         ctx.shadowBlur  = 12;
       } else {
+        // Regular edge style.
         ctx.strokeStyle = 'rgba(0,229,255,0.18)';
         ctx.lineWidth   = 1.5;
         ctx.setLineDash([4, 4]);
@@ -973,6 +1021,7 @@ class NetworkRenderer {
       ctx.setLineDash([]);
       ctx.shadowBlur = 0;
 
+      // Render distance label for non-path edges.
       if (!isPath) {
         const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
         const fs = Math.min(12, 9 / this.scale);
@@ -983,6 +1032,7 @@ class NetworkRenderer {
       }
     }
 
+    // Draw nodes on top of edges.
     for (const [name, node] of Object.entries(this.nodes)) {
       const isPath  = this.pathNodes.has(name);
       const isHover = this.hoveredNode === name;
@@ -1014,6 +1064,7 @@ class NetworkRenderer {
       ctx.stroke();
       ctx.shadowBlur = 0;
 
+      // Draw node label in middle.
       const fs = Math.min(11, 10 / this.scale);
       ctx.fillStyle    = isPath ? '#a8ff3e' : isHover ? '#00e5ff' : '#e8eaf0';
       ctx.font         = `bold ${fs}px Syne, sans-serif`;
@@ -1021,6 +1072,7 @@ class NetworkRenderer {
       ctx.textBaseline = 'middle';
       ctx.fillText(name.length > 7 ? name.slice(0, 7) : name, node.x, node.y);
 
+      // Start/end labels.
       if (isStart || isEnd) {
         ctx.font      = `bold 8px Space Mono`;
         ctx.fillStyle = isStart ? '#a8ff3e' : '#ff6b35';
